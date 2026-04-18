@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """
-酒店教育课件生成系统 v1.0
-Hotel Education Courseware Generator
+酒店教育课件生成系统 v2.0
+Hotel Education Courseware Generator — GHE Aligned (Cornell + EHL + HK PolyU)
 
-方法论整合:
-- Manus AI: 研究 → 结构 → 生成 → 交付
-- TABLE AI BP: 深度分析 + 叙事规划 + 高品质 HTML
-- Stripe Design: 极简顶奢 (300字重, 蓝色调阴影, ss01)
-- Linear Design: 深色精准 (510字重, 半透明边框)
+GHE = Global Hospitality Education — 全球酒店管理教育标杆知识体系
+- Cornell: 运营卓越 + 数据驱动
+- EHL (洛桑): 奢华服务 + 欧洲标准  
+- HK PolyU: 亚洲市场 + 中国元素
 
-支持 24/7 持续生成，模块化架构
+支持 24/7 持续生成，模块化架构，Subagent 并行开发
 """
 
 import os
