@@ -534,6 +534,99 @@ class CourseGenerator:
         logger.info(f"✅ 课程已保存: {output_path}")
         return str(output_path)
 
+# ============ Git Push 配置 ============
+
+GHE_CODE_REPO = "https://github.com/fengurt/hotel-education.git"
+GHE_COURSES_REPO = "https://github.com/fengurt/hotel-education-courses.git"
+GHE_CODE_REPO_DIR = Path.home() / "hotel-education"
+GHE_COURSES_REPO_DIR = Path.home() / "hotel-education-courses-repo"
+
+def git_push(repo_path: Path, message: str, remote_url: str = None) -> bool:
+    """Git add + commit + push helper"""
+    try:
+        import subprocess
+        repo = repo_path
+        
+        # Check if it's a git repo
+        if not (repo / ".git").exists():
+            logger.warning(f"⚠️ {repo} 不是 git 仓库，跳过 push")
+            return False
+        
+        # Set identity if not set
+        subprocess.run(["git", "config", "user.email", "pilopio@163.com"], 
+                       cwd=repo, check=False, capture_output=True)
+        subprocess.run(["git", "config", "user.name", "pilopio"], 
+                       cwd=repo, check=False, capture_output=True)
+        
+        # Add remote if not exists
+        result = subprocess.run(["git", "remote", "-v"], cwd=repo, 
+                                capture_output=True, text=True)
+        if "origin" not in result.stdout:
+            if remote_url:
+                subprocess.run(["git", "remote", "add", "origin", remote_url], 
+                              cwd=repo, check=False, capture_output=True)
+        
+        # git add
+        subprocess.run(["git", "add", "-A"], cwd=repo, capture_output=True)
+        
+        # Check if there are changes to commit
+        result = subprocess.run(["git", "status", "--porcelain"], cwd=repo, 
+                                capture_output=True, text=True)
+        if not result.stdout.strip():
+            logger.info("📦 没有新变化，跳过 commit")
+            return True
+        
+        # git commit
+        commit_result = subprocess.run(
+            ["git", "commit", "-m", message],
+            cwd=repo, capture_output=True, text=True
+        )
+        if commit_result.returncode != 0:
+            logger.warning(f"⚠️ Commit 失败: {commit_result.stderr}")
+            return False
+        
+        # git push
+        push_result = subprocess.run(
+            ["git", "push", "origin", "main"],
+            cwd=repo, capture_output=True, text=True
+        )
+        if push_result.returncode == 0:
+            logger.info(f"🚀 已推送到 GitHub: {message[:50]}...")
+            return True
+        else:
+            logger.warning(f"⚠️ Push 失败: {push_result.stderr}")
+            return False
+    except Exception as e:
+        logger.error(f"❌ Git push 出错: {e}")
+        return False
+
+def git_push_course(course_key: str, theme: str, course_id: str) -> bool:
+    """推送单门课程到 courses repo"""
+    # courses repo 在 slide_generator 同级目录的 hotel-education-courses-repo
+    courses_repo = GHE_CODE_REPO_DIR.parent / "hotel-education-courses-repo"
+    if not courses_repo.exists():
+        logger.warning(f"⚠️ courses-repo 不存在: {courses_repo}")
+        return False
+    
+    source_html = GHE_CODE_REPO_DIR / "output" / theme / f"{course_key}.html"
+    if not source_html.exists():
+        return False
+    
+    # Copy to courses repo
+    dest_html = courses_repo / theme / f"{course_key}.html"
+    dest_html.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Only copy if different
+    import shutil
+    if dest_html.exists():
+        if source_html.stat().st_mtime <= dest_html.stat().st_mtime:
+            return True  # Already up to date
+    
+    shutil.copy2(source_html, dest_html)
+    
+    message = f"Course: {course_id} ({course_key}) — {theme} theme generated"
+    return git_push(courses_repo, message, GHE_COURSES_REPO)
+
 # ============ 预置课程模板 ============
 
 COURSE_TEMPLATES = {
@@ -1243,10 +1336,13 @@ def generate_all_courses(theme: str = "hotel"):
             # 生成 HTML
             output_file = OUTPUT_DIR / theme / f"{course_key}.html"
             generator.save_course(course, output_file)
-            
+
             state["generated"].append(course_key)
             save_gen_state(state)
-            
+
+            # 自动推送到 GitHub
+            git_push_course(course_key, theme, course_data["course_id"])
+
         except Exception as e:
             logger.error(f"❌ 生成失败 {course_key}: {e}")
             state["failed"].append({"course": course_key, "error": str(e)})
@@ -1284,6 +1380,13 @@ def main():
             for c in COURSE_TEMPLATES.keys():
                 status = "✅" if c in state["generated"] else "⏳"
                 print(f"  {status} {c}")
+        elif cmd == "push":
+            # 手动推送所有未推送的课程到 GitHub
+            theme = sys.argv[2] if len(sys.argv) > 2 else "hotel"
+            courses_repo = GHE_CODE_REPO_DIR.parent / "hotel-education-courses-repo"
+            if courses_repo.exists():
+                git_push(courses_repo, "Manual push: update all courses", GHE_COURSES_REPO)
+            git_push(GHE_CODE_REPO_DIR, "Update code repo", GHE_CODE_REPO)
         elif cmd == "demo":
             # 生成单个演示课程
             demo_course = Course(
